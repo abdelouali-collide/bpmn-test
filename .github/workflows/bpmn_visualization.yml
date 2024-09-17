@@ -1,0 +1,53 @@
+name: BPMN Visualisatie naar GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  generate-bpmn-visualization:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Zoek BPMN-bestand in README
+      id: find_bpmn
+      run: |
+        # Zoek naar een patroon in de README die het BPMN-bestand specificeert
+        # Bijvoorbeeld: [BPMN](path/to/file.bpmn)
+        BPMN_PATH=$(grep -oP '(?<=\]\().+\.bpmn(?=\))' README.md | head -n 1)
+        echo "bpmn_path=$BPMN_PATH" >> $GITHUB_OUTPUT
+        if [ -z "$BPMN_PATH" ]; then
+          echo "Geen BPMN-bestand gevonden in README."
+          exit 1
+        fi
+
+    - name: Installeer Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+
+    - name: Installeer bpmn-to-svg tool
+      run: |
+        npm install -g bpmn-to-svg
+
+    - name: Genereer SVG van BPMN
+      run: |
+        bpmn-to-svg ${{ steps.find_bpmn.outputs.bpmn_path }} -o diagram.svg
+
+    - name: Configureer GitHub Pages
+      uses: actions/configure-pages@v4
+
+    - name: Upload visualisatie
+      uses: actions/upload-pages-artifact@v1
+      with:
+        path: diagram.svg
+
+    - name: Deploy naar GitHub Pages
+      uses: actions/deploy-pages@v1
