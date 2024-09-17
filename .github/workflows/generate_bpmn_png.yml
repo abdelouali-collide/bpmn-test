@@ -1,4 +1,4 @@
-name: Generate BPMN PNG and Update README 
+name: Generate BPMN PNG and Update README
 
 on:
   push:
@@ -23,13 +23,10 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Install dependencies
-      run: |
-        npm install puppeteer
-
     - name: Find BPMN file path in README
       id: find_bpmn
       run: |
+        # Zoek naar een BPMN-bestand link in README.md, bijvoorbeeld [BPMN](path/to/file.bpmn)
         BPMN_PATH=$(grep -oP '(?<=\]\().+\.bpmn(?=\))' README.md | head -n 1)
         echo "bpmn_path=$BPMN_PATH" >> $GITHUB_OUTPUT
         if [ -z "$BPMN_PATH" ]; then
@@ -37,79 +34,28 @@ jobs:
           exit 1
         fi
 
-    - name: Generate PNG from BPMN
+    - name: Generate PNG from BPMN via Kroki
       env:
         BPMN_PATH: ${{ steps.find_bpmn.outputs.bpmn_path }}
       run: |
-        mkdir -p scripts
-        cat <<EOF > scripts/render_bpmn.js
-        const puppeteer = require('puppeteer');
-        const path = require('path');
-        const fs = require('fs');
+        # Controleer of het BPMN-bestand bestaat
+        if [ ! -f "$BPMN_PATH" ]; then
+          echo "Het BPMN-bestand '$BPMN_PATH' bestaat niet."
+          exit 1
+        fi
 
-        (async () => {
-          const bpmnPath = path.resolve(process.env.BPMN_PATH);
-          const bpmnXML = fs.readFileSync(bpmnPath, 'utf-8');
+        # Gebruik de Kroki API om het BPMN-diagram om te zetten naar PNG
+        curl -X POST \
+          -H "Content-Type: text/plain" \
+          --data-binary "@$BPMN_PATH" \
+          https://kroki.io/bpmn/png \
+          --output diagram.png
 
-          const htmlContent = \`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>BPMN Render</title>
-            <script src="https://unpkg.com/bpmn-js@13.0.3/dist/bpmn-viewer.development.js"></script>
-            <style>
-              body {
-                margin: 0;
-                padding: 0;
-                overflow: hidden;
-              }
-              #canvas {
-                width: 100vw;
-                height: 100vh;
-                background: #fff;
-              }
-            </style>
-          </head>
-          <body>
-            <div id="canvas"></div>
-            <script>
-              const viewer = new BpmnJS({ container: '#canvas' });
-              const bpmnXML = \`${bpmnXML.replace(/`/g, '\\`')}\`;
-              viewer.importXML(bpmnXML, function(err) {
-                if (err) {
-                  console.error('Failed to import BPMN diagram:', err);
-                } else {
-                  viewer.get('canvas').zoom('fit-viewport');
-                }
-              });
-            </script>
-          </body>
-          </html>
-          \`;
-
-          fs.writeFileSync('bpmn_render.html', htmlContent);
-
-          const browser = await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-          });
-          const page = await browser.newPage();
-
-          await page.setViewport({ width: 1920, height: 1080 });
-          await page.goto(`file://${path.resolve('bpmn_render.html')}`, { waitUntil: 'networkidle0' });
-
-          // Wacht tot het BPMN-diagram is gerenderd
-          await page.waitForSelector('#canvas svg');
-
-          // Maak een screenshot van het canvas div
-          const canvas = await page.$('#canvas');
-          await canvas.screenshot({ path: 'diagram.png' });
-
-          await browser.close();
-        })();
-        EOF
-
-        node scripts/render_bpmn.js
+        # Controleer of de PNG correct is gegenereerd
+        if [ ! -f diagram.png ]; then
+          echo "Fout bij het genereren van diagram.png via Kroki."
+          exit 1
+        fi
 
     - name: Update README with PNG
       run: |
@@ -118,7 +64,9 @@ jobs:
 
         # Maak de images directory als deze nog niet bestaat
         mkdir -p images
-        mv diagram.png images/
+
+        # Verplaats de gegenereerde PNG naar de images directory
+        mv diagram.png "$IMAGE_PATH"
 
         # Controleer of de sectie "## BPMN Diagram" al bestaat
         if grep -q "## BPMN Diagram" README.md; then
