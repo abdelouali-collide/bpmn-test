@@ -8,8 +8,13 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
-  generate-bpmn-visualization:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -83,6 +88,8 @@ jobs:
 
     - name: Configureer GitHub Pages
       uses: actions/configure-pages@v4
+      with:
+        build_dir: deployment
 
     - name: Upload artefacten
       uses: actions/upload-pages-artifact@v1
