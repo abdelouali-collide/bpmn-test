@@ -38,7 +38,7 @@ jobs:
         mkdir -p deployment
         cp ${{ steps.find_bpmn.outputs.bpmn_path }} deployment/diagram.bpmn
 
-    - name: Maak HTML-pagina
+    - name: Maak HTML-pagina met Zoom Controls
       run: |
         cat <<EOF > deployment/index.html
         <!DOCTYPE html>
@@ -53,6 +53,14 @@ jobs:
               font-family: Arial, sans-serif;
               margin: 20px;
             }
+            #controls {
+              margin-bottom: 10px;
+            }
+            #controls button {
+              padding: 10px;
+              margin-right: 5px;
+              font-size: 16px;
+            }
             #canvas {
               width: 100%;
               height: 600px;
@@ -62,6 +70,11 @@ jobs:
         </head>
         <body>
           <h1>BPMN Diagram</h1>
+          <div id="controls">
+            <button id="zoom-in">Inzoomen</button>
+            <button id="zoom-out">Uitzoomen</button>
+            <button id="reset-zoom">Reset Zoom</button>
+          </div>
           <div id="canvas"></div>
           <script src="https://unpkg.com/bpmn-js@13.0.3/dist/bpmn-viewer.development.js"></script>
           <script>
@@ -76,6 +89,23 @@ jobs:
                   } else {
                     viewer.get('canvas').zoom('fit-viewport');
                   }
+                });
+
+                // Zoom In knop
+                document.getElementById('zoom-in').addEventListener('click', () => {
+                  const currentZoom = viewer.get('canvas').zoom();
+                  viewer.get('canvas').zoom(currentZoom * 1.2);
+                });
+
+                // Zoom Out knop
+                document.getElementById('zoom-out').addEventListener('click', () => {
+                  const currentZoom = viewer.get('canvas').zoom();
+                  viewer.get('canvas').zoom(currentZoom / 1.2);
+                });
+
+                // Reset Zoom knop
+                document.getElementById('reset-zoom').addEventListener('click', () => {
+                  viewer.get('canvas').zoom('fit-viewport');
                 });
               })
               .catch(error => {
