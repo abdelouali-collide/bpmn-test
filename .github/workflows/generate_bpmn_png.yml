@@ -1,4 +1,4 @@
-name: Generate BPMN PNG and Update README
+name: Generate BPMN PNG and Update README 
 
 on:
   push:
