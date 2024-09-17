@@ -28,26 +28,66 @@ jobs:
           exit 1
         fi
 
-    - name: Installeer Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '16'
-
-    - name: Installeer bpmn-to-svg tool
+    - name: Kopieer BPMN-bestand naar deployment directory
       run: |
-        npm install -g bpmn-to-svg
+        mkdir -p deployment
+        cp ${{ steps.find_bpmn.outputs.bpmn_path }} deployment/diagram.bpmn
 
-    - name: Genereer SVG van BPMN
+    - name: Maak HTML-pagina
       run: |
-        bpmn-to-svg ${{ steps.find_bpmn.outputs.bpmn_path }} -o diagram.svg
+        cat <<EOF > deployment/index.html
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>BPMN Visualisatie</title>
+          <link rel="stylesheet" href="https://unpkg.com/bpmn-js@13.0.3/dist/assets/diagram-js.css">
+          <link rel="stylesheet" href="https://unpkg.com/bpmn-js@13.0.3/dist/assets/bpmn-js.css">
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              margin: 20px;
+            }
+            #canvas {
+              width: 100%;
+              height: 600px;
+              border: 1px solid #ccc;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>BPMN Diagram</h1>
+          <div id="canvas"></div>
+          <script src="https://unpkg.com/bpmn-js@13.0.3/dist/bpmn-viewer.development.js"></script>
+          <script>
+            fetch('diagram.bpmn')
+              .then(response => response.text())
+              .then(bpmnXML => {
+                const container = document.getElementById('canvas');
+                const viewer = new BpmnJS({ container });
+                viewer.importXML(bpmnXML, function(err) {
+                  if (err) {
+                    console.error('Fout bij importeren BPMN:', err);
+                  } else {
+                    viewer.get('canvas').zoom('fit-viewport');
+                  }
+                });
+              })
+              .catch(error => {
+                console.error('Fout bij het laden van BPMN-bestand:', error);
+              });
+          </script>
+        </body>
+        </html>
+        EOF
 
     - name: Configureer GitHub Pages
       uses: actions/configure-pages@v4
 
-    - name: Upload visualisatie
+    - name: Upload artefacten
       uses: actions/upload-pages-artifact@v1
       with:
-        path: diagram.svg
+        path: deployment
 
     - name: Deploy naar GitHub Pages
       uses: actions/deploy-pages@v1
