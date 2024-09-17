@@ -1,0 +1,143 @@
+name: Generate BPMN PNG and Update README
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  generate-png:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        persist-credentials: false  # Voorkomt dat GITHUB_TOKEN automatisch wordt gebruikt voor pushes
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      run: |
+        npm install puppeteer
+
+    - name: Find BPMN file path in README
+      id: find_bpmn
+      run: |
+        BPMN_PATH=$(grep -oP '(?<=\]\().+\.bpmn(?=\))' README.md | head -n 1)
+        echo "bpmn_path=$BPMN_PATH" >> $GITHUB_OUTPUT
+        if [ -z "$BPMN_PATH" ]; then
+          echo "Geen BPMN-bestand gevonden in README."
+          exit 1
+        fi
+
+    - name: Generate PNG from BPMN
+      env:
+        BPMN_PATH: ${{ steps.find_bpmn.outputs.bpmn_path }}
+      run: |
+        mkdir -p scripts
+        cat <<EOF > scripts/render_bpmn.js
+        const puppeteer = require('puppeteer');
+        const path = require('path');
+        const fs = require('fs');
+
+        (async () => {
+          const bpmnPath = path.resolve(process.env.BPMN_PATH);
+          const bpmnXML = fs.readFileSync(bpmnPath, 'utf-8');
+
+          const htmlContent = \`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>BPMN Render</title>
+            <script src="https://unpkg.com/bpmn-js@13.0.3/dist/bpmn-viewer.development.js"></script>
+            <style>
+              body {
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+              }
+              #canvas {
+                width: 100vw;
+                height: 100vh;
+                background: #fff;
+              }
+            </style>
+          </head>
+          <body>
+            <div id="canvas"></div>
+            <script>
+              const viewer = new BpmnJS({ container: '#canvas' });
+              const bpmnXML = \`${bpmnXML.replace(/`/g, '\\`')}\`;
+              viewer.importXML(bpmnXML, function(err) {
+                if (err) {
+                  console.error('Failed to import BPMN diagram:', err);
+                } else {
+                  viewer.get('canvas').zoom('fit-viewport');
+                }
+              });
+            </script>
+          </body>
+          </html>
+          \`;
+
+          fs.writeFileSync('bpmn_render.html', htmlContent);
+
+          const browser = await puppeteer.launch({
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+          });
+          const page = await browser.newPage();
+
+          await page.setViewport({ width: 1920, height: 1080 });
+          await page.goto(`file://${path.resolve('bpmn_render.html')}`, { waitUntil: 'networkidle0' });
+
+          // Wacht tot het BPMN-diagram is gerenderd
+          await page.waitForSelector('#canvas svg');
+
+          // Maak een screenshot van het canvas div
+          const canvas = await page.$('#canvas');
+          await canvas.screenshot({ path: 'diagram.png' });
+
+          await browser.close();
+        })();
+        EOF
+
+        node scripts/render_bpmn.js
+
+    - name: Update README with PNG
+      run: |
+        # Definieer het pad naar de afbeelding, bijvoorbeeld 'images/diagram.png'
+        IMAGE_PATH="images/diagram.png"
+
+        # Maak de images directory als deze nog niet bestaat
+        mkdir -p images
+        mv diagram.png images/
+
+        # Controleer of de sectie "## BPMN Diagram" al bestaat
+        if grep -q "## BPMN Diagram" README.md; then
+          # Verwijder alles na "## BPMN Diagram" om de afbeelding te vervangen
+          sed -i '/## BPMN Diagram/q' README.md
+        fi
+
+        # Voeg de "## BPMN Diagram" sectie toe met de PNG afbeelding
+        echo -e "\n## BPMN Diagram\n\n![BPMN Diagram]($IMAGE_PATH)" >> README.md
+
+    - name: Commit changes
+      run: |
+        git config --local user.name "github-actions[bot]"
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git add images/diagram.png README.md
+        git commit -m "Generate BPMN diagram PNG and update README [skip ci]" || echo "Geen wijzigingen om te committen"
+
+    - name: Push changes
+      uses: ad-m/github-push-action@v0.6.0
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: main
