@@ -1,2 +1,1 @@
 bpmn-files/recruitment_process.bpmn
-bpmn-files/self-service-restaurant.bpmn
