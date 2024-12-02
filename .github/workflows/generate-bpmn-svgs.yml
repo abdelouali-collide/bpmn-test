@@ -1,0 +1,107 @@
+name: Generate BPMN SVGs and Update Processed Files
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  generate-svgs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        persist-credentials: false  # Prevents automatic use of GITHUB_TOKEN for pushes
+
+    - name: Set up environment
+      run: |
+        # Create necessary directories if they don't exist
+        mkdir -p bpmn-files-processed
+        mkdir -p svg-files
+
+    - name: Initialize processed.txt if not exists
+      run: |
+        if [ ! -f processed.txt ]; then
+          touch processed.txt
+        fi
+
+    - name: Get list of processed BPMN files
+      id: get_processed
+      run: |
+        PROCESSED_FILES=$(cat processed.txt || echo "")
+        echo "processed_files=$PROCESSED_FILES" >> $GITHUB_OUTPUT
+
+    - name: Find unprocessed BPMN files
+      id: find_unprocessed
+      run: |
+        # List all BPMN files in bpmn-files/
+        ALL_BPMN_FILES=$(find bpmn-files -type f -name "*.bpmn")
+        
+        # Read processed files from the output
+        PROCESSED_FILES="${{ steps.get_processed.outputs.processed_files }}"
+        
+        # Initialize an empty variable for unprocessed files
+        UNPROCESSED_FILES=""
+        
+        # Iterate over all BPMN files and check if they are processed
+        for file in $ALL_BPMN_FILES; do
+          # Extract relative path
+          REL_PATH="$file"
+          if [[ ! " $PROCESSED_FILES " =~ " $REL_PATH " ]]; then
+            UNPROCESSED_FILES+="$file "
+          fi
+        done
+        
+        echo "unprocessed_files=$UNPROCESSED_FILES" >> $GITHUB_OUTPUT
+
+    - name: Generate SVGs from BPMN files
+      if: steps.find_unprocessed.outputs.unprocessed_files != ''
+      run: |
+        echo "Unprocessed BPMN files: ${{ steps.find_unprocessed.outputs.unprocessed_files }}"
+        
+        for BPMN_FILE in ${{ steps.find_unprocessed.outputs.unprocessed_files }}; do
+          echo "Processing $BPMN_FILE"
+
+          # Define the SVG file path
+          SVG_FILE="svg-files/$(basename "${BPMN_FILE%.bpmn}.svg")"
+          
+          # Convert BPMN to SVG using Kroki API
+          curl -X POST \
+            -H "Content-Type: text/plain" \
+            --data-binary "@$BPMN_FILE" \
+            https://kroki.io/bpmn/svg \
+            --output "$SVG_FILE"
+          
+          # Check if SVG was generated successfully
+          if [ ! -f "$SVG_FILE" ]; then
+            echo "Error: Failed to generate SVG for $BPMN_FILE"
+            exit 1
+          fi
+          
+          echo "Successfully generated $SVG_FILE"
+          
+          # Append the processed BPMN file to processed.txt
+          echo "$BPMN_FILE" >> processed.txt
+          
+          # Move the BPMN file to bpmn-files-processed/
+          mv "$BPMN_FILE" bpmn-files-processed/
+        done
+
+    - name: Commit and push changes
+      run: |
+        git config --local user.name "github-actions[bot]"
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Check if there are any changes to commit
+        if git diff --quiet; then
+          echo "No changes to commit."
+        else
+          git add svg-files/ processed.txt bpmn-files-processed/
+          git commit -m "Generate BPMN SVGs and update processed files [skip ci]"
+          git push origin main
+        fi
