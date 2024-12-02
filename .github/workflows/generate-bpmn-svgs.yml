@@ -93,6 +93,8 @@ jobs:
         done
 
     - name: Commit and push changes
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config --local user.name "github-actions[bot]"
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -103,5 +105,10 @@ jobs:
         else
           git add svg-files/ processed.txt bpmn-files-processed/
           git commit -m "Generate BPMN SVGs and update processed files [skip ci]"
+          
+          # Update the remote URL to include the GITHUB_TOKEN for authentication
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          
+          # Push the changes to the main branch
           git push origin main
         fi
