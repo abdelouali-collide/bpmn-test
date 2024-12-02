@@ -1,1 +1,5 @@
 bpmn-files/recruitment_process.bpmn
+bpmn-files/credit-scoring-synchronous.bpmn
+bpmn-files/recourse.bpmn
+bpmn-files/credit-scoring-asynchronous.bpmn
+bpmn-files/Dispatch-of-goods.bpmn
